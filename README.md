@@ -1,7 +1,7 @@
 # PML_Final_Project
 The Final Project for the Practical Machine Learning Course of the Data Science Coursera Specialization.
 
-You can find the HTML document with the analysis [here]().
+You can find the HTML document with the analysis [here](https://sigm4.github.io/PML-Final-Project/HTML%20Output/PML_Final.html).
 
 ## Project Description:
 
