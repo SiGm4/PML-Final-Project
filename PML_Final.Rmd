@@ -1,0 +1,138 @@
+---
+title: "Practical Machine Learning Final Project"
+author: "Dimitris Gkiokas"
+date: "4 Ιουλίου 2017"
+output: html_document
+---
+
+## Overview
+
+This is the final project of the Practical Machine Learning course in the Data Science Coursera Specialization, offered by Johns Hopkins University. The following is the given description from the Coursera assignment:
+
+### Description
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+### Data
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment. 
+
+## Loading the data
+
+First we load the necessary libraries.
+
+```{r,warning=FALSE,message=FALSE}
+library(caret)
+library(randomForest)
+library(gbm)
+```
+
+And then we download the 2 files, saving them and loading them into the environment.
+
+```{r, cache=TRUE}
+fileUrl  <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+download.file(fileUrl,"traindata.csv")
+training <- read.csv("traindata.csv", na.strings = c("NA", ""))
+fileUrl  <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(fileUrl,"testdata.csv")
+finaltesting <- read.csv("testdata.csv", na.strings = c("NA", ""))
+```
+
+## Cleaning the data
+
+First of all we delete all columns that have near zero variance. We make sure to make the transformations to both datasets, in order to keep them in the same format, making sure we will be able to predict the values in the end.
+
+```{r}
+nzv <- nearZeroVar(training, saveMetrics = TRUE)
+training <- training[,nzv$nzv==FALSE]
+finaltesting <- finaltesting[,nzv$nzv==FALSE]
+```
+
+Now, we clean up the first five columns, where data like username and timestamps are included, which are not useful to our model.
+
+```{r}
+training <- training[,-c(1:5)]
+finaltesting <- finaltesting[,-c(1:5)]
+```
+
+Finally, we remove all columns that have more than 95% NAs. Those are probably not useful for our prediction model, and we are only interested in the columns that carry important information.
+
+```{r}
+notManyNA <- sapply(names(training), function(x) mean(is.na(training[,x]))<0.95)
+training <- subset(training, select = notManyNA)
+finaltesting <- subset(finaltesting, select = notManyNA)
+dim(training); dim(finaltesting)
+```
+
+We can easily see that there are only 54 columns left out of the 160 we started with.
+
+## Splitting the Data
+
+We split the data in 3 parts: One part training data (60%), one part validation data (10%) and one part test data (30%). We use the training dataset to train our model, the validation dataset to try different models on and choose the best one, and the testing dataset to confirm the accuracy of our model.
+
+```{r}
+set.seed(18)
+inTrain <- createDataPartition(training$classe, p=0.6, list=FALSE)
+myTraining <- training[inTrain, ]
+nonTraining <- training[-inTrain, ]
+inValid <- createDataPartition(nonTraining$classe, p=0.25, list=FALSE)
+myValidation <- nonTraining[inValid, ]
+myTesting <- nonTraining[-inValid, ]
+dim(myTraining); dim(myTesting); dim(myValidation)
+```
+
+## Predicting Using Generalized Boosted Regression
+
+First we create a model using Generalized Boosted Regression, with cross validation of k=5.
+
+```{r, cache = T}
+gbmF1 <- train(classe ~ ., data=myTraining, method = "gbm",
+                 trControl = trainControl(method = "repeatedcv", number = 5, repeats = 1),
+                 verbose = FALSE)
+gbmPred <- predict(gbmF1, newdata=myValidation)
+gbmCm <- confusionMatrix(gbmPred, myValidation$classe)
+gbmCm
+```
+
+## Predicting Using Random Forests
+
+In order to check different options, we also create a model using Random Forests, again with cross validation of k=5.
+
+```{r, cache = TRUE}
+modFitB1 <- randomForest(classe ~ ., data=myTraining, trControl=trainControl(method="cv",number=5))
+predictionB1 <- predict(modFitB1, myValidation, type = "class")
+cmrf <- confusionMatrix(predictionB1, myValidation$classe)
+cmrf
+```
+
+## Choosing and Confirming Model
+
+As we can see Random Forests performs slightly better than the GBM model. Thus we choose to make our predictions with the RF model. Before using it on our final dataset, we confirm its accuracy on the test dataset.
+
+```{r}
+predictionB2 <- predict(modFitB1, myTesting, type = "class")
+cmrfT <- confusionMatrix(predictionB2, myTesting$classe)
+cmrfT
+```
+
+As we expected, the model performs greatly on this dataset as well, in fact it even does a little better. The **out of sample error** is *100%-99.71% = 0.29%*.  Using this model we predict on the 20 quiz values right below.
+
+## Predicting our Final 20 Test Values
+
+```{r}
+predict(modFitB1,finaltesting,type="class")
+```
+
+After inputting those values in Coursera's quiz, we get 20/20 correct, giving our model 100% accuracy over this (small) dataset.
+
+## Conclusion
+
+In this project we used different models to find the one with the best accuracy, in order to use that to predict on our final test dataset. We also used validation data to make the selection, and then a testing dataset to confirm on our model's accuracy. That is generally a good practice in order to maintain the "purity" of the testing dataset, meaning that we will only use it once to test on our model, and not in order to train it further. Finally, we used the model to predict on the final 20 values with 100% accuracy.
